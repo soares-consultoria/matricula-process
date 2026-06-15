@@ -36,3 +36,38 @@ tasks.named('test') {
         events 'passed', 'skipped', 'failed'
     }
 }
+
+// ---------------------------------------------------------------------------
+// Geração da documentação Javadoc
+//
+// - Saída em ./documentacao (raiz do projeto), e não no diretório padrão
+//   build/docs/javadoc.
+// - Encoding UTF-8 em entrada, saída e charset.
+// - Doclint desativado (-Xdoclint:none) para que o build NÃO falhe por
+//   avisos de documentação ausente em métodos/parâmetros não mapeados.
+// ---------------------------------------------------------------------------
+tasks.named('javadoc', Javadoc) {
+    description = 'Gera a documentação Javadoc em ./documentacao'
+    destinationDir = file("$rootDir/documentacao")
+    failOnError = false
+
+    options {
+        encoding = 'UTF-8'
+        charSet = 'UTF-8'
+        docEncoding = 'UTF-8'
+        docTitle = "matricula-process ${project.version} — Referência da API"
+        windowTitle = "matricula-process ${project.version}"
+        author = true
+        use = true
+        version = true
+        // Não tratar avisos de Javadoc como erro de build.
+        addStringOption('Xdoclint:none', '-quiet')
+    }
+}
+
+// Atalho conveniente: ./gradlew docs (alias para a task javadoc).
+tasks.register('docs') {
+    group = 'documentation'
+    description = 'Atalho para gerar o Javadoc em ./documentacao'
+    dependsOn tasks.named('javadoc')
+}

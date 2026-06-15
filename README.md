@@ -1,6 +1,21 @@
 # matricula-process
 
-Microsserviço event-driven que processa atualizações de turma e sincroniza os dias da semana das matrículas ativas.
+> **Tipo de projeto:** Aplicação / Microsserviço (Spring Boot 3.x · Java 21 · Gradle)
+
+## Visão Geral
+
+O **matricula-process** é um microsserviço *event-driven* que mantém os dias da semana das matrículas ativas sincronizados com as atualizações de turma, dentro de um ecossistema de processamento de dados acadêmicos.
+
+**Objetivo de negócio:** quando a grade de uma turma muda (ex.: passa a ter aula também na sexta-feira), todas as matrículas ativas daquela turma precisam refletir os novos dias — desde que o ciclo letivo esteja vigente. O serviço automatiza essa propagação e notifica os sistemas downstream sobre cada matrícula alterada.
+
+**Objetivos técnicos:**
+
+- Integrar-se ao ecossistema via Kafka (consumo e publicação de eventos).
+- Validar regras de negócio consultando um serviço REST externo (ciclos).
+- Persistir com eficiência em MongoDB, suportando milhares de matrículas por chave de negócio.
+- Garantir resiliência (retry/DLT) e rastreabilidade (logs estruturados com MDC).
+
+O serviço **não expõe uma API REST de negócio**: seu "contrato público" são os tópicos Kafka que consome e publica (ver [Referência da API](#referência-da-api)).
 
 ## Fluxo
 
@@ -146,7 +161,90 @@ Os defaults locais já apontam para `localhost` (`Mongo 27017`, `Kafka 9094`, `C
 
 Mapeamentos em [`wiremock/mappings/`](wiremock/mappings/).
 
+## Referência da API
+
+Por ser um serviço *event-driven*, o contrato principal é assíncrono (tópicos Kafka). Não há endpoints REST de negócio nem Swagger/OpenAPI — os únicos endpoints HTTP são os do Actuator (operacionais).
+
+### Contrato de mensageria (Kafka)
+
+| Tópico | Direção | Descrição |
+|---|---|---|
+| `turma-atualizada` | consome | Evento de entrada com a turma atualizada e o `cicloId` a validar |
+| `matricula-atualizada` | publica | Um evento por matrícula efetivamente atualizada |
+| `turma-atualizada.DLT` | publica | Dead Letter Topic — mensagens inválidas ou que esgotaram o retry |
+
+**Entrada — `turma-atualizada`:**
+
+```json
+{
+  "businessKey": "GRAD/ENG/BACH/PRESENCIAL/NOTURNO/UNIT-SP-01",
+  "turma": {
+    "codigo": "T2026-001",
+    "diasDaSemana": ["SEGUNDA", "QUARTA", "SEXTA"],
+    "horarioInicio": "19:00",
+    "horarioFim": "22:30",
+    "vagas": 40
+  },
+  "cicloId": 20261
+}
+```
+
+**Saída — `matricula-atualizada`:**
+
+```json
+{
+  "matriculaId": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "alunoId": "ALU-001",
+  "businessKey": "GRAD/ENG/BACH/PRESENCIAL/NOTURNO/UNIT-SP-01",
+  "cicloId": 20261,
+  "diasDaSemanaAnterior": ["SEGUNDA", "QUARTA"],
+  "diasDaSemanaNovo": ["SEGUNDA", "QUARTA", "SEXTA"],
+  "dataAtualizacao": "2026-06-15T10:30:00"
+}
+```
+
+### Serviço REST consumido (API de ciclos)
+
+O serviço **consome** (não expõe) o endpoint externo abaixo, configurável via `CICLO_API_URL`:
+
+```
+GET {CICLO_API_URL}/api/ciclos/{cicloId}
+→ 200 {"id": 20261, "ativo": true, "dataInicioCaptura": "2026-01-15", "dataFimCaptura": "2026-07-01"}
+→ 404  (ciclo não encontrado → evento descartado)
+```
+
+### Endpoints HTTP (Actuator)
+
+| Endpoint | Descrição |
+|---|---|
+| `GET /actuator/health` | Status de saúde da aplicação |
+| `GET /actuator/info` | Informações da aplicação |
+| `GET /actuator/metrics` | Métricas operacionais |
+
 ## Observabilidade
 
 - Health check: `GET http://localhost:8080/actuator/health`
 - Logs JSON com MDC para rastreabilidade por evento (`correlationId`, `businessKey`, `cicloId`, `topic`, `partition`, `offset`)
+
+## Geração da Documentação (Javadoc)
+
+A documentação técnica detalhada do código-fonte pode ser gerada utilizando o Javadoc padrão do ecossistema Java.
+
+Para gerar a documentação localmente, execute o comando correspondente à ferramenta de build do projeto na raiz do repositório:
+
+```bash
+# Gerar o Javadoc (Gradle)
+./gradlew javadoc
+
+# Atalho equivalente
+./gradlew docs
+```
+
+A documentação é gerada na pasta [`documentacao/`](documentacao/) na raiz do projeto (e não no diretório padrão `build/docs/javadoc`). Após a geração, abra o arquivo `documentacao/index.html` no navegador:
+
+```bash
+open documentacao/index.html      # macOS
+xdg-open documentacao/index.html  # Linux
+```
+
+A task está configurada com encoding `UTF-8` e com o *doclint* desativado (`-Xdoclint:none`), de modo que avisos de documentação ausente em métodos não mapeados **não** interrompem o build.

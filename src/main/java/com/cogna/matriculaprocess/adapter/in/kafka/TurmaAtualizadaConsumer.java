@@ -13,6 +13,20 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
+/**
+ * Adaptador de entrada (driving adapter) que consome eventos do tópico
+ * {@code turma-atualizada}.
+ *
+ * <p>Desserializa o payload JSON, popula o {@link MDC} com dados de
+ * rastreabilidade (correlationId, businessKey, tópico/partição/offset) e
+ * delega o processamento ao caso de uso. Payloads malformados ou sem campos
+ * obrigatórios resultam em {@link MensagemInvalidaException}, tratada pelo
+ * error handler como não recuperável (enviada diretamente à DLT).</p>
+ *
+ * @author Equipe matricula-process
+ * @see ProcessarTurmaAtualizadaUseCase
+ * @see com.cogna.matriculaprocess.config.KafkaConsumerConfig
+ */
 @Component
 public class TurmaAtualizadaConsumer {
 
@@ -21,11 +35,24 @@ public class TurmaAtualizadaConsumer {
     private final ProcessarTurmaAtualizadaUseCase useCase;
     private final ObjectMapper objectMapper;
 
+    /**
+     * Cria o consumidor com o caso de uso e o desserializador JSON.
+     *
+     * @param useCase      caso de uso a ser acionado para cada evento válido
+     * @param objectMapper mapeador Jackson usado na desserialização do payload
+     */
     public TurmaAtualizadaConsumer(ProcessarTurmaAtualizadaUseCase useCase, ObjectMapper objectMapper) {
         this.useCase = useCase;
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Processa um registro recebido do tópico {@code turma-atualizada}.
+     *
+     * @param record registro Kafka com o payload JSON do evento de turma
+     * @throws MensagemInvalidaException se o JSON for inválido ou faltarem
+     *                                   campos obrigatórios (envia à DLT)
+     */
     @KafkaListener(topics = "${app.kafka.topics.turma-atualizada}", groupId = "${spring.kafka.consumer.group-id}")
     public void consumir(ConsumerRecord<String, String> record) {
         MDC.put("correlationId", UUID.randomUUID().toString());
@@ -51,6 +78,15 @@ public class TurmaAtualizadaConsumer {
         }
     }
 
+    /**
+     * Converte o evento Kafka no comando de aplicação, validando a presença dos
+     * campos obrigatórios.
+     *
+     * @param event evento desserializado do tópico de entrada
+     * @return comando de aplicação correspondente
+     * @throws MensagemInvalidaException se {@code businessKey}, {@code turma} ou
+     *                                   {@code cicloId} estiverem ausentes
+     */
     private TurmaAtualizadaCommand toCommand(TurmaAtualizadaEvent event) {
         TurmaAtualizadaEvent.TurmaPayload turma = event.turma();
         if (event.businessKey() == null || event.cicloId() == null || turma == null) {

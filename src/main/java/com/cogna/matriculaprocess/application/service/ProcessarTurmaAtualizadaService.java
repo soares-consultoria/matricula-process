@@ -19,6 +19,26 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 
+/**
+ * Implementação do caso de uso de processamento de turma atualizada.
+ *
+ * <p>Orquestra as regras de negócio do serviço, na seguinte ordem:</p>
+ * <ol>
+ *     <li>Consulta o ciclo no serviço externo via {@link ConsultarCicloPort}.</li>
+ *     <li>Se o ciclo não existir (404) ou não estiver vigente, o evento é
+ *     logado e descartado — nada é persistido nem publicado.</li>
+ *     <li>Se vigente, busca as matrículas ATIVAS do {@code businessKey} e, para
+ *     cada uma cujos dias divergem dos novos dias da turma, atualiza a
+ *     persistência e publica o evento {@code matricula-atualizada}.</li>
+ * </ol>
+ *
+ * <p>O {@link Clock} é injetado para tornar a verificação de vigência e o
+ * carimbo de data/hora testáveis de forma determinística.</p>
+ *
+ * @author Equipe matricula-process
+ * @see ProcessarTurmaAtualizadaUseCase
+ * @see com.cogna.matriculaprocess.domain.model.Ciclo#vigente(java.time.LocalDate)
+ */
 @Service
 public class ProcessarTurmaAtualizadaService implements ProcessarTurmaAtualizadaUseCase {
 
@@ -29,6 +49,15 @@ public class ProcessarTurmaAtualizadaService implements ProcessarTurmaAtualizada
     private final PublicarMatriculaAtualizadaPort publicarPort;
     private final Clock clock;
 
+    /**
+     * Cria o serviço com suas portas de saída e o relógio.
+     *
+     * @param consultarCicloPort porta de consulta de ciclos no serviço externo
+     * @param matriculaPort      porta de acesso às matrículas persistidas
+     * @param publicarPort       porta de publicação do evento de saída
+     * @param clock              relógio usado na verificação de vigência e no
+     *                           carimbo de {@code dataAtualizacao}
+     */
     public ProcessarTurmaAtualizadaService(ConsultarCicloPort consultarCicloPort,
                                            MatriculaPort matriculaPort,
                                            PublicarMatriculaAtualizadaPort publicarPort,
@@ -39,6 +68,15 @@ public class ProcessarTurmaAtualizadaService implements ProcessarTurmaAtualizada
         this.clock = clock;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Aplica a validação de vigência do ciclo e, quando vigente, percorre as
+     * matrículas ATIVAS atualizando apenas as que tiverem dias divergentes.
+     * Eventos de ciclos inexistentes ou não vigentes são descartados com log.</p>
+     *
+     * @param command comando com os dados da turma e o ciclo a validar
+     */
     @Override
     public void processar(TurmaAtualizadaCommand command) {
         Optional<Ciclo> ciclo = consultarCicloPort.buscarPorId(command.cicloId());
@@ -74,6 +112,12 @@ public class ProcessarTurmaAtualizadaService implements ProcessarTurmaAtualizada
                 command.businessKey(), command.cicloId(), avaliadas.get(), atualizadas.get());
     }
 
+    /**
+     * Persiste os novos dias da matrícula e publica o evento de atualização.
+     *
+     * @param matricula matrícula com dias divergentes a ser atualizada
+     * @param command   comando com os novos dados da turma
+     */
     private void atualizar(Matricula matricula, TurmaAtualizadaCommand command) {
         matriculaPort.atualizarDiasDaSemana(matricula.id(), command.diasDaSemana());
 

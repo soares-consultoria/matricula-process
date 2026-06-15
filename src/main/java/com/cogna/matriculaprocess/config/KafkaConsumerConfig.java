@@ -12,14 +12,32 @@ import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
 
 /**
- * Tratamento de falhas do consumer: retry com backoff exponencial e, esgotadas
- * as tentativas, publicação na DLT ({@code <tópico>.DLT}).
+ * Configuração de tratamento de falhas do consumidor Kafka.
+ *
+ * <p>Define a política de resiliência: até 3 tentativas com backoff exponencial
+ * (1s, 2s, 4s, limitado a 10s) e, esgotadas as tentativas, publicação na
+ * <em>Dead Letter Topic</em> {@code <tópico>.DLT}. {@link MensagemInvalidaException}
+ * é classificada como não recuperável e vai direto para a DLT, sem retry.</p>
+ *
+ * @author Equipe matricula-process
+ * @see com.cogna.matriculaprocess.config.KafkaTopicsConfig
+ * @see com.cogna.matriculaprocess.adapter.in.kafka.TurmaAtualizadaConsumer
  */
 @Configuration
 public class KafkaConsumerConfig {
 
     private static final Logger log = LoggerFactory.getLogger(KafkaConsumerConfig.class);
 
+    /**
+     * Cria o error handler do consumidor com retry e roteamento para a DLT.
+     *
+     * <p>O destino da DLT é resolvido explicitamente como {@code <tópico>.DLT},
+     * preservando a partição de origem, para casar com os tópicos provisionados
+     * em {@link KafkaTopicsConfig}.</p>
+     *
+     * @param kafkaTemplate template usado para publicar as mensagens na DLT
+     * @return o {@link DefaultErrorHandler} configurado
+     */
     @Bean
     public DefaultErrorHandler errorHandler(KafkaTemplate<String, String> kafkaTemplate) {
         // Resolver explícito: publica em "<tópico>.DLT", casando com o tópico
