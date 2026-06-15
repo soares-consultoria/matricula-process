@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: matricula-process
+
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/matriculadb}
+      auto-index-creation: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    consumer:
+      group-id: matricula-process
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+app:
+  ciclo-api:
+    url: ${CICLO_API_URL:http://localhost:8089}
+    connect-timeout-ms: 2000
+    read-timeout-ms: 5000
+  kafka:
+    topics:
+      turma-atualizada: turma-atualizada
+      matricula-atualizada: matricula-atualizada
+      partitions: 3
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+server:
+  port: ${SERVER_PORT:8080}

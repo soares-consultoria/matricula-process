@@ -1,0 +1,10 @@
+{
+  "priority": 10,
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/api/ciclos/.*"
+  },
+  "response": {
+    "status": 404
+  }
+}
